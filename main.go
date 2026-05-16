@@ -38,6 +38,7 @@ type config struct {
 	target         targetKind
 	singleSuffix   string
 	servicesSuffix string
+	servicesFile   string
 	rpcSuffix      string
 	implSuffix     string
 	packageSuffix  string
@@ -55,6 +56,7 @@ var (
 	targetFlag    = flagSet.String("target", string(targetGRPC), "target runtime: grpc or connect")
 	singleFile    = flagSet.String("single_suffix", defaultSingleSuffix, "suffix for single-file layout")
 	services      = flagSet.String("services_suffix", defaultServicesFile, "suffix for service definition file in multi layout")
+	servicesFile  = flagSet.String("services_file", "", "explicit file name for service definition file in multi layout (e.g. server.go)")
 	rpcSuffix     = flagSet.String("rpc_suffix", defaultRPCFileSuffix, "suffix for RPC files in multi layout")
 	implSuffix    = flagSet.String("impl_suffix", "Impl", "suffix appended to generated service struct names")
 	pkgSuffix     = flagSet.String("package_suffix", "", "suffix appended to go_package for generated impl package (empty = same package)")
@@ -110,7 +112,7 @@ func main() {
 	})
 }
 func debugRun(plugin *protogen.Plugin) error {
-	cfg, err := buildConfig(*layoutFlag, *targetFlag, *singleFile, *services, *rpcSuffix, *implSuffix, *pkgSuffix, *connectSuffix, *outDirFlag, *moduleFlag, *splitFlag, *overwriteFlag, *registerFlag, *trimPathFlag)
+	cfg, err := buildConfig(*layoutFlag, *targetFlag, *singleFile, *services, *servicesFile, *rpcSuffix, *implSuffix, *pkgSuffix, *connectSuffix, *outDirFlag, *moduleFlag, *splitFlag, *overwriteFlag, *registerFlag, *trimPathFlag)
 	if err != nil {
 		return err
 	}
@@ -147,12 +149,13 @@ func debugRun(plugin *protogen.Plugin) error {
 	return nil
 }
 
-func buildConfig(layout, target, single, services, rpcSuffix, impl, pkgSuffix, connectSuffix, outDir, modulePath string, split bool, overwrite bool, register bool, trimPathPrefix string) (*config, error) {
+func buildConfig(layout, target, single, services, serviceFile, rpcSuffix, impl, pkgSuffix, connectSuffix, outDir, modulePath string, split bool, overwrite bool, register bool, trimPathPrefix string) (*config, error) {
 	cfg := &config{
 		layout:         layoutMode(layout),
 		target:         targetKind(target),
 		singleSuffix:   single,
 		servicesSuffix: services,
+		servicesFile:   serviceFile,
 		rpcSuffix:      rpcSuffix,
 		implSuffix:     impl,
 		packageSuffix:  pkgSuffix,
@@ -217,6 +220,14 @@ func generateMultiFiles(plugin *protogen.Plugin, file *protogen.File, cfg *confi
 	usedRPCFiles := make(map[string]bool)
 
 	servicesFile := target.prefix + cfg.servicesSuffix
+	if cfg.servicesFile != "" {
+		dir := path.Dir(target.prefix)
+		if dir == "." {
+			servicesFile = cfg.servicesFile
+		} else {
+			servicesFile = path.Join(dir, cfg.servicesFile)
+		}
+	}
 	sg, err := prepareGeneratedFile(plugin, servicesFile, target.importPath, cfg.overwrite, cfg.outDir)
 	if err != nil {
 		return err
@@ -367,7 +378,8 @@ type registerPackage struct {
 }
 
 func targetInfo(file *protogen.File, cfg *config) targetPackage {
-	prefix := file.GeneratedFilenamePrefix
+	originalPrefix := file.GeneratedFilenamePrefix
+	prefix := originalPrefix
 	importPath := file.GoImportPath
 	pkgName := file.GoPackageName
 	protoAlias := "desc"
@@ -414,8 +426,9 @@ func targetInfo(file *protogen.File, cfg *config) targetPackage {
 		connectAlias = "connectpb"
 	}
 
-	isSameProtoPackage := importPath == file.GoImportPath && pkgName == file.GoPackageName && !*diffPackage
-	isSameConnectPackage := importPath == connectImport && pkgName == connectPkg && !*diffPackage
+	pathChanged := prefix != originalPrefix
+	isSameProtoPackage := !pathChanged && importPath == file.GoImportPath && pkgName == file.GoPackageName && !*diffPackage
+	isSameConnectPackage := !pathChanged && importPath == connectImport && pkgName == connectPkg && !*diffPackage
 
 	return targetPackage{
 		prefix:             prefix,

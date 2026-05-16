@@ -20,6 +20,7 @@ const (
 	defaultSingleSuffix  = "_implement.pb.go"
 	defaultServicesFile  = "_implement_services.pb.go"
 	defaultRPCFileSuffix = "_rpc.pb.go"
+	defaultImplSuffix    = "Implementation"
 )
 
 type layoutMode string
@@ -40,6 +41,7 @@ type config struct {
 	servicesSuffix string
 	servicesFile   string
 	rpcSuffix      string
+	implName       string
 	implSuffix     string
 	packageSuffix  string
 	connectSuffix  string
@@ -58,7 +60,8 @@ var (
 	services      = flagSet.String("services_suffix", defaultServicesFile, "suffix for service definition file in multi layout")
 	servicesFile  = flagSet.String("services_file", "", "explicit file name for service definition file in multi layout (e.g. server.go)")
 	rpcSuffix     = flagSet.String("rpc_suffix", defaultRPCFileSuffix, "suffix for RPC files in multi layout")
-	implSuffix    = flagSet.String("impl_suffix", "Impl", "suffix appended to generated service struct names")
+	implName      = flagSet.String("impl_name", "", "explicit generated service struct name (overrides service name + impl_suffix)")
+	implSuffix    = flagSet.String("impl_suffix", defaultImplSuffix, "suffix appended to generated service struct names")
 	pkgSuffix     = flagSet.String("package_suffix", "", "suffix appended to go_package for generated impl package (empty = same package)")
 	connectSuffix = flagSet.String("connect_package_suffix", "connect", "suffix for connect generated package (used when target=connect)")
 	outDirFlag    = flagSet.String("out", "", "output directory passed to protoc for this plugin; used to set register package name and imports")
@@ -112,7 +115,7 @@ func main() {
 	})
 }
 func debugRun(plugin *protogen.Plugin) error {
-	cfg, err := buildConfig(*layoutFlag, *targetFlag, *singleFile, *services, *servicesFile, *rpcSuffix, *implSuffix, *pkgSuffix, *connectSuffix, *outDirFlag, *moduleFlag, *splitFlag, *overwriteFlag, *registerFlag, *trimPathFlag)
+	cfg, err := buildConfig(*layoutFlag, *targetFlag, *singleFile, *services, *servicesFile, *rpcSuffix, *implName, *implSuffix, *pkgSuffix, *connectSuffix, *outDirFlag, *moduleFlag, *splitFlag, *overwriteFlag, *registerFlag, *trimPathFlag)
 	if err != nil {
 		return err
 	}
@@ -149,7 +152,7 @@ func debugRun(plugin *protogen.Plugin) error {
 	return nil
 }
 
-func buildConfig(layout, target, single, services, serviceFile, rpcSuffix, impl, pkgSuffix, connectSuffix, outDir, modulePath string, split bool, overwrite bool, register bool, trimPathPrefix string) (*config, error) {
+func buildConfig(layout, target, single, services, serviceFile, rpcSuffix, implName, impl, pkgSuffix, connectSuffix, outDir, modulePath string, split bool, overwrite bool, register bool, trimPathPrefix string) (*config, error) {
 	cfg := &config{
 		layout:         layoutMode(layout),
 		target:         targetKind(target),
@@ -157,6 +160,7 @@ func buildConfig(layout, target, single, services, serviceFile, rpcSuffix, impl,
 		servicesSuffix: services,
 		servicesFile:   serviceFile,
 		rpcSuffix:      rpcSuffix,
+		implName:       implName,
 		implSuffix:     impl,
 		packageSuffix:  pkgSuffix,
 		connectSuffix:  connectSuffix,
@@ -203,7 +207,7 @@ func generateSingleFile(plugin *protogen.Plugin, file *protogen.File, cfg *confi
 	g.P()
 
 	for _, service := range file.Services {
-		implName := service.GoName + cfg.implSuffix
+		implName := generatedImplName(service, cfg)
 		renderServiceStruct(g, service, implName, cfg.target, target)
 		g.P()
 		for _, method := range service.Methods {
@@ -244,7 +248,7 @@ func generateMultiFiles(plugin *protogen.Plugin, file *protogen.File, cfg *confi
 	}
 
 	for _, service := range file.Services {
-		implName := service.GoName + cfg.implSuffix
+		implName := generatedImplName(service, cfg)
 		if sg != nil {
 			renderServiceStruct(sg, service, implName, cfg.target, target)
 			sg.P()
@@ -328,6 +332,10 @@ func renderServiceStruct(g *protogen.GeneratedFile, service *protogen.Service, i
 		}
 		g.P("var _ ", handlerName, " = (*", implName, ")(nil)")
 	}
+	g.P()
+	g.P("func New", implName, "() *", implName, " {")
+	g.P("\treturn &", implName, "{}")
+	g.P("}")
 }
 
 func renderMethod(g *protogen.GeneratedFile, service *protogen.Service, method *protogen.Method, implName string, target targetKind, pkg targetPackage) {
@@ -613,7 +621,7 @@ func writeRegisterServiceConnect(g *protogen.GeneratedFile, target registerPacka
 	g.P(")")
 	g.P()
 
-	implName := service.GoName + cfg.implSuffix
+	implName := generatedImplName(service, cfg)
 	g.P("func init() {")
 	g.P("\tregisters = append(registers, func(mux *http.ServeMux) {")
 	g.P("\t\tmux.Handle(", target.connectAlias, ".New", service.GoName, "Handler(&", target.implAlias, ".", implName, "{}))")
@@ -638,7 +646,7 @@ func writeRegisterServiceGRPC(g *protogen.GeneratedFile, file *protogen.File, ta
 	g.P(")")
 	g.P()
 
-	implName := service.GoName + cfg.implSuffix
+	implName := generatedImplName(service, cfg)
 
 	g.P("func init() {")
 	g.P("\tregisters = append(registers, func(server grpc.ServiceRegistrar) {")
@@ -749,6 +757,13 @@ func qualifyProto(name string, pkg targetPackage) string {
 		return pkg.protoAlias + "." + name
 	}
 	return name
+}
+
+func generatedImplName(service *protogen.Service, cfg *config) string {
+	if cfg.implName != "" {
+		return cfg.implName
+	}
+	return service.GoName + cfg.implSuffix
 }
 
 func trimRelativePrefix(value, trim string) string {

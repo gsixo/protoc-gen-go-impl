@@ -367,7 +367,8 @@ type registerPackage struct {
 }
 
 func targetInfo(file *protogen.File, cfg *config) targetPackage {
-	prefix := file.GeneratedFilenamePrefix
+	originalPrefix := file.GeneratedFilenamePrefix
+	prefix := originalPrefix
 	importPath := file.GoImportPath
 	pkgName := file.GoPackageName
 	protoAlias := "desc"
@@ -414,8 +415,9 @@ func targetInfo(file *protogen.File, cfg *config) targetPackage {
 		connectAlias = "connectpb"
 	}
 
-	isSameProtoPackage := importPath == file.GoImportPath && pkgName == file.GoPackageName && !*diffPackage
-	isSameConnectPackage := importPath == connectImport && pkgName == connectPkg && !*diffPackage
+	pathChanged := prefix != originalPrefix
+	isSameProtoPackage := !pathChanged && importPath == file.GoImportPath && pkgName == file.GoPackageName && !*diffPackage
+	isSameConnectPackage := !pathChanged && importPath == connectImport && pkgName == connectPkg && !*diffPackage
 
 	return targetPackage{
 		prefix:             prefix,

@@ -414,15 +414,18 @@ func targetInfo(file *protogen.File, cfg *config) targetPackage {
 		connectAlias = "connectpb"
 	}
 
+	isSameProtoPackage := importPath == file.GoImportPath && pkgName == file.GoPackageName && !*diffPackage
+	isSameConnectPackage := importPath == connectImport && pkgName == connectPkg && !*diffPackage
+
 	return targetPackage{
 		prefix:             prefix,
 		importPath:         importPath,
 		pkgName:            pkgName,
-		samePackage:        cfg.outDir == "" && importPath == file.GoImportPath && !*diffPackage,
+		samePackage:        isSameProtoPackage,
 		protoAlias:         protoAlias,
 		connectImportPath:  connectImport,
 		connectPkgName:     connectPkg,
-		connectSamePackage: cfg.outDir == "" && importPath == connectImport && !*diffPackage,
+		connectSamePackage: isSameConnectPackage,
 		connectAlias:       connectAlias,
 	}
 }

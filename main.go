@@ -381,13 +381,24 @@ func targetInfo(file *protogen.File, cfg *config) targetPackage {
 	if cfg.trimPathPrefix != "" {
 		prefix = trimRelativePrefix(prefix, cfg.trimPathPrefix)
 	}
+
+	// Collapse nested proto dirs into a single implementation package dir:
+	// aibox_api/v1 -> aibox_apiv1
+	prefixDir := path.Dir(prefix)
+	prefixBase := path.Base(prefix)
+	flatDir := flattenDir(prefixDir)
+	if flatDir != "" {
+		prefix = path.Join(flatDir, prefixBase)
+		pkgName = protogen.GoPackageName(flatDir)
+	}
+
 	if cfg.outDir != "" && cfg.modulePath != "" {
 		relDir := path.Dir(prefix)
 		if relDir == "." {
 			relDir = ""
 		}
 		importPath = protogen.GoImportPath(path.Join(cfg.modulePath, cfg.outDir, relDir))
-		if relDir != "" {
+		if relDir != "" && flatDir == "" {
 			pkgName = protogen.GoPackageName(path.Base(relDir))
 		}
 	}
@@ -407,11 +418,11 @@ func targetInfo(file *protogen.File, cfg *config) targetPackage {
 		prefix:             prefix,
 		importPath:         importPath,
 		pkgName:            pkgName,
-		samePackage:        importPath == file.GoImportPath && !*diffPackage,
+		samePackage:        cfg.outDir == "" && importPath == file.GoImportPath && !*diffPackage,
 		protoAlias:         protoAlias,
 		connectImportPath:  connectImport,
 		connectPkgName:     connectPkg,
-		connectSamePackage: importPath == connectImport && !*diffPackage,
+		connectSamePackage: cfg.outDir == "" && importPath == connectImport && !*diffPackage,
 		connectAlias:       connectAlias,
 	}
 }
@@ -738,6 +749,14 @@ func trimRelativePrefix(value, trim string) string {
 		return strings.TrimPrefix(cleanValue, prefix)
 	}
 	return cleanValue
+}
+
+func flattenDir(dir string) string {
+	clean := strings.Trim(path.Clean(dir), "/")
+	if clean == "" || clean == "." {
+		return ""
+	}
+	return strings.ReplaceAll(clean, "/", "")
 }
 
 func detectModulePath() string {

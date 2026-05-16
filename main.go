@@ -20,6 +20,7 @@ const (
 	defaultSingleSuffix  = "_implement.pb.go"
 	defaultServicesFile  = "_implement_services.pb.go"
 	defaultRPCFileSuffix = "_rpc.pb.go"
+	defaultImplSuffix    = "Implementation"
 )
 
 type layoutMode string
@@ -58,7 +59,7 @@ var (
 	services      = flagSet.String("services_suffix", defaultServicesFile, "suffix for service definition file in multi layout")
 	servicesFile  = flagSet.String("services_file", "", "explicit file name for service definition file in multi layout (e.g. server.go)")
 	rpcSuffix     = flagSet.String("rpc_suffix", defaultRPCFileSuffix, "suffix for RPC files in multi layout")
-	implSuffix    = flagSet.String("impl_suffix", "Impl", "suffix appended to generated service struct names")
+	implSuffix    = flagSet.String("impl_suffix", defaultImplSuffix, "suffix appended to generated service struct names")
 	pkgSuffix     = flagSet.String("package_suffix", "", "suffix appended to go_package for generated impl package (empty = same package)")
 	connectSuffix = flagSet.String("connect_package_suffix", "connect", "suffix for connect generated package (used when target=connect)")
 	outDirFlag    = flagSet.String("out", "", "output directory passed to protoc for this plugin; used to set register package name and imports")
@@ -328,6 +329,10 @@ func renderServiceStruct(g *protogen.GeneratedFile, service *protogen.Service, i
 		}
 		g.P("var _ ", handlerName, " = (*", implName, ")(nil)")
 	}
+	g.P()
+	g.P("func New", implName, "() *", implName, " {")
+	g.P("\treturn &", implName, "{}")
+	g.P("}")
 }
 
 func renderMethod(g *protogen.GeneratedFile, service *protogen.Service, method *protogen.Method, implName string, target targetKind, pkg targetPackage) {
